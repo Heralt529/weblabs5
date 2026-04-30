@@ -1,58 +1,91 @@
 <?php
-
-/**
- * Файл login.php для не авторизованного пользователя выводит форму логина.
- * При отправке формы проверяет логин/пароль и создает сессию,
- * записывает в нее логин и id пользователя.
- * После авторизации пользователь перенаправляется на главную страницу
- * для изменения ранее введенных данных.
- **/
-
-// Отправляем браузеру правильную кодировку,
-// файл login.php должен быть в кодировке UTF-8 без BOM.
 header('Content-Type: text/html; charset=UTF-8');
 
-// В суперглобальном массиве $_SESSION хранятся переменные сессии.
-// Будем сохранять туда логин после успешной авторизации.
+$user = 'u82197';
+$pass = '6410666';
+$db = new PDO('mysql:host=localhost;dbname=u82197', $user, $pass, [
+    PDO::ATTR_PERSISTENT => true,
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+]);
+
 $session_started = false;
-if ($_COOKIE[session_name()] && session_start()) {
-  $session_started = true;
-  if (!empty($_SESSION['login'])) {
-    // Если есть логин в сессии, то пользователь уже авторизован.
-    // TODO: Сделать выход (окончание сессии вызовом session_destroy()
-    //при нажатии на кнопку Выход).
-    // Делаем перенаправление на форму.
-    header('Location: ./');
-    exit();
-  }
+if (!empty($_COOKIE[session_name()]) && session_start()) {
+    $session_started = true;
+    if (!empty($_SESSION['login'])) {
+        header('Location: ./');
+        exit();
+    }
 }
 
-// В суперглобальном массиве $_SERVER PHP сохраняет некторые заголовки запроса HTTP
-// и другие сведения о клиненте и сервере, например метод текущего запроса $_SERVER['REQUEST_METHOD'].
 if ($_SERVER['REQUEST_METHOD'] == 'GET') {
-?>
-
-<form action="" method="post">
-  <input name="login" />
-  <input name="pass" />
-  <input type="submit" value="Войти" />
-</form>
-
-<?php
+    ?>
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <title>Вход в систему</title>
+        <style>
+            .error-message { color: red; margin-top: 10px; }
+        </style>
+    </head>
+    <body>
+        <h2>Вход в личный кабинет</h2>
+        <form action="" method="post">
+            <label for="login">Логин:</label>
+            <input name="login" id="login" type="text" required /><br/><br/>
+            <label for="pass">Пароль:</label>
+            <input name="pass" id="pass" type="password" required /><br/><br/>
+            <input type="submit" value="Войти" />
+        </form>
+        <?php
+        if (!empty($_COOKIE['login_error'])) {
+            echo '<p class="error-message">Неверный логин или пароль.</p>';
+            setcookie('login_error', '', 100000); 
+        }
+        ?>
+        <br/>
+        <a href="index.php">На главную</a>
+    </body>
+    </html>
+    <?php
+    exit();
 }
-// Иначе, если запрос был методом POST, т.е. нужно сделать авторизацию с записью логина в сессию.
 else {
-  // TODO: Проверть есть ли такой логин и пароль в базе данных.
-  // Выдать сообщение об ошибках.
+    $login_input = $_POST['login'] ?? '';
+    $pass_input = $_POST['pass'] ?? '';
 
-  if (!$session_started) {
-    session_start();
-  }
-  // Если все ок, то авторизуем пользователя.
-  $_SESSION['login'] = $_POST['login'];
-  // Записываем ID пользователя.
-  $_SESSION['uid'] = 123;
+    if (empty($login_input) || empty($pass_input)) {
+       
+        setcookie('login_error', '1', time() + 24 * 60 * 60);
+        header('Location: login.php');
+        exit();
+    }
 
-  // Делаем перенаправление.
-  header('Location: ./');
+    try {
+     
+        $stmt = $db->prepare("SELECT id, login, pass_hash FROM users WHERE login = ?");
+        $stmt->execute([$login_input]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        
+        if ($user && md5($pass_input) === $user['pass_hash']) {
+       
+            if (!$session_started) {
+                session_start();
+            }
+            $_SESSION['login'] = $user['login'];
+            $_SESSION['uid'] = $user['id'];
+
+            header('Location: index.php');
+            exit();
+        } else {
+            
+            setcookie('login_error', '1', time() + 24 * 60 * 60);
+            header('Location: login.php');
+            exit();
+        }
+    } catch (PDOException $e) {
+        die('Ошибка базы данных: ' . $e->getMessage());
+    }
 }
+?>
